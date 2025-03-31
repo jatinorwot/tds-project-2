@@ -6,7 +6,8 @@ from utils.function_definations_llm import function_definitions_objects_llm
 
 # OpenAI API settings
 openai_api_chat = "http://aiproxy.sanand.workers.dev/openai/v1/chat/completions"
-openai_api_key = os.environ.get("AIPROXY_TOKEN")
+#openai_api_key = os.environ.get("AIPROXY_TOKEN")
+openai_api_key = "eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6IjIzZjIwMDE3MDZAZHMuc3R1ZHkuaWl0bS5hYy5pbiJ9.mPEmQgVADkHSbjNrqCxQ6SrVrxJqVtIhuS5wFXfCK3o"
 
 headers = {
     "Authorization": f"Bearer {openai_api_key}",
