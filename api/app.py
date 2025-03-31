@@ -91,6 +91,94 @@ def filter_arguments_for_function(func, arguments: Dict) -> Dict:
             
     return filtered_args
 
+# @app.post("/")
+# async def process_file(
+#     question: str = Form(...),
+#     file: Optional[UploadFile] = File(None)
+# ):
+#     file_names = []
+#     tmp_dir_local = tmp_dir
+#     file_data = {}
+    
+
+#     # Handle the file processing if file is present
+#     matched_function = find_similar_question(question)
+#     function_name = matched_function[0]
+#     print("-----------Matched Function------------\n", function_name)
+    
+#     if file:
+#         print("received file")
+#         file_path = await save_upload_file(file)
+#         try:
+#             tmp_dir_local, file_names = process_uploaded_file(file_path)
+#             file_data = {
+#                 "file_path": os.path.join(tmp_dir_local, file_names[0]) if file_names else None,
+#                 "original_filename": file.filename,
+#                 "tmp_dir": tmp_dir_local
+#             }
+#         except ValueError as e:
+#             raise HTTPException(status_code=400, detail=str(e))
+
+#     # Extract parameters using LLM
+#     parameters = extract_parameters(
+#         str(question),
+#         function_definitions_llm=function_definitions_objects_llm.get(function_name, {}),
+#     )
+#     print("-----------parameters------------\n", parameters)
+
+#     if not parameters or "arguments" not in parameters:
+#         raise HTTPException(
+#             status_code=400, 
+#             detail="Failed to extract parameters for the given question"
+#         )
+
+#     solution_function = functions_dict.get(
+#         function_name, 
+#         lambda **kwargs: json.dumps({"error": "No matching function found"})
+#     )
+
+#     try:
+#         arguments = json.loads(parameters["arguments"])
+#     except (TypeError, json.JSONDecodeError) as e:
+#         raise HTTPException(
+#             status_code=400, 
+#             detail=f"Invalid arguments format: {str(e)}"
+#         )
+
+#     # Combine all possible arguments
+#     combined_args = {**arguments, **file_data}
+    
+#     # Filter arguments to only what the function accepts
+#     filtered_args = filter_arguments_for_function(solution_function, combined_args)
+#     print("-----------filtered_args------------\n", filtered_args)
+
+#     try:
+#         # Execute with only the needed arguments
+#         answer = solution_function(**filtered_args)
+#         answer_str = convert_answer_to_string(answer)
+#     except Exception as e:
+#         error_msg = f"Error executing function: {str(e)}"
+#         answer_str = json.dumps({"error": error_msg})
+#         raise HTTPException(status_code=500, detail=error_msg)
+#     finally:
+#         # Clean up temporary files
+        
+#         if file_path and os.path.exists(file_path):
+#             try:
+#                 os.remove(file_path)
+#                 print(f"Deleted temporary file: {file_path}")
+#             except OSError as e:
+#                 print(f"Warning: Failed to delete file {file_path}: {e}")
+
+        
+#         if file_data.get("tmp_dir") and os.path.exists(file_data["tmp_dir"]):
+#             try:
+#                 shutil.rmtree(file_data["tmp_dir"])
+#             except OSError as e:
+#                 print(f"Warning: Failed to clean up temp directory: {e}")
+
+#     return {"answer": answer_str}
+
 @app.post("/")
 async def process_file(
     question: str = Form(...),
@@ -100,84 +188,98 @@ async def process_file(
     tmp_dir_local = tmp_dir
     file_data = {}
     
+    try:
+        # Handle the file processing if file is present
+        matched_function = find_similar_question(question)
+        if not matched_function:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"No matching function found for question: {question}"
+            )
+        
+        function_name = matched_function[0]
+        print("-----------Matched Function------------\n", function_name)
+        
+        if file:
+            print("received file")
+            file_path = await save_upload_file(file)
+            try:
+                tmp_dir_local, file_names = process_uploaded_file(file_path)
+                file_data = {
+                    "file_path": os.path.join(tmp_dir_local, file_names[0]) if file_names else None,
+                    "original_filename": file.filename,
+                    "tmp_dir": tmp_dir_local
+                }
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
 
-    # Handle the file processing if file is present
-    matched_function = find_similar_question(question)
-    function_name = matched_function[0]
-    print("-----------Matched Function------------\n", function_name)
-    
-    if file:
-        print("received file")
-        file_path = await save_upload_file(file)
+        # Extract parameters using LLM
         try:
-            tmp_dir_local, file_names = process_uploaded_file(file_path)
-            file_data = {
-                "file_path": os.path.join(tmp_dir_local, file_names[0]) if file_names else None,
-                "original_filename": file.filename,
-                "tmp_dir": tmp_dir_local
-            }
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            parameters = extract_parameters(
+                str(question),
+                function_definitions_llm=function_definitions_objects_llm.get(function_name, {}),
+            )
+            print("-----------parameters------------\n", parameters)
 
-    # Extract parameters using LLM
-    parameters = extract_parameters(
-        str(question),
-        function_definitions_llm=function_definitions_objects_llm.get(function_name, {}),
-    )
-    print("-----------parameters------------\n", parameters)
+            if not parameters or "arguments" not in parameters:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Failed to extract parameters for the given question"
+                )
+        except Exception as param_error:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Parameter extraction error: {str(param_error)}"
+            )
 
-    if not parameters or "arguments" not in parameters:
-        raise HTTPException(
-            status_code=400, 
-            detail="Failed to extract parameters for the given question"
+        solution_function = functions_dict.get(
+            function_name, 
+            lambda **kwargs: json.dumps({"error": "No matching function found"})
         )
 
-    solution_function = functions_dict.get(
-        function_name, 
-        lambda **kwargs: json.dumps({"error": "No matching function found"})
-    )
+        try:
+            arguments = json.loads(parameters["arguments"])
+        except (TypeError, json.JSONDecodeError) as e:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid arguments format: {str(e)}"
+            )
 
-    try:
-        arguments = json.loads(parameters["arguments"])
-    except (TypeError, json.JSONDecodeError) as e:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid arguments format: {str(e)}"
-        )
+        # Combine all possible arguments
+        combined_args = {**arguments, **file_data}
+        
+        # Filter arguments to only what the function accepts
+        filtered_args = filter_arguments_for_function(solution_function, combined_args)
+        print("-----------filtered_args------------\n", filtered_args)
 
-    # Combine all possible arguments
-    combined_args = {**arguments, **file_data}
-    
-    # Filter arguments to only what the function accepts
-    filtered_args = filter_arguments_for_function(solution_function, combined_args)
-    print("-----------filtered_args------------\n", filtered_args)
-
-    try:
         # Execute with only the needed arguments
         answer = solution_function(**filtered_args)
         answer_str = convert_answer_to_string(answer)
+
+        return {"answer": answer_str}
+
+    except HTTPException:
+        # Re-raise HTTPException to preserve status codes
+        raise
     except Exception as e:
-        error_msg = f"Error executing function: {str(e)}"
-        answer_str = json.dumps({"error": error_msg})
+        # Catch-all for unexpected errors
+        error_msg = f"Unexpected error processing request: {str(e)}"
+        print(f"Error details: {traceback.format_exc()}")  # Log full traceback
         raise HTTPException(status_code=500, detail=error_msg)
     finally:
         # Clean up temporary files
-        
-        if file_path and os.path.exists(file_path):
+        if 'file_path' in locals() and file_path and os.path.exists(file_path):
             try:
                 os.remove(file_path)
                 print(f"Deleted temporary file: {file_path}")
             except OSError as e:
                 print(f"Warning: Failed to delete file {file_path}: {e}")
 
-        
         if file_data.get("tmp_dir") and os.path.exists(file_data["tmp_dir"]):
             try:
                 shutil.rmtree(file_data["tmp_dir"])
             except OSError as e:
                 print(f"Warning: Failed to clean up temp directory: {e}")
-
-    return {"answer": answer_str}
 
 if __name__ == "__main__":
     import uvicorn
